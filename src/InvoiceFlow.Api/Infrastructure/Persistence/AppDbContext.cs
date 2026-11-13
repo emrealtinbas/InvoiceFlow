@@ -37,7 +37,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     private void ApplyAuditTimestamps()
     {
-        var now = DateTime.UtcNow;
+        // PostgreSQL timestamps have microsecond precision. Align in-memory values before
+        // returning them so create responses exactly match subsequent database reads.
+        var utcNow = DateTime.UtcNow;
+        var now = new DateTime(
+            utcNow.Ticks - (utcNow.Ticks % TimeSpan.TicksPerMicrosecond),
+            DateTimeKind.Utc);
 
         foreach (var entry in ChangeTracker.Entries<IAuditableEntity>())
         {
