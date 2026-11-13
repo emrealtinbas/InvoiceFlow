@@ -1,0 +1,25 @@
+# Version control and local tooling
+.git
+.gitignore
+.github
+.vs
+.idea
+.vscode
+.DS_Store
+
+# Build output
+**/bin
+**/obj
+**/TestResults
+artifacts
+
+# Not needed to build the API image
+docs
+tests
+README.md
+*.md
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example

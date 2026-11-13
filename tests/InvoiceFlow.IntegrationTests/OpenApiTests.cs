@@ -30,6 +30,7 @@ public sealed class OpenApiTests : IDisposable
         var paths = document.RootElement.GetProperty("paths");
 
         Assert.True(paths.TryGetProperty("/health", out _));
+        Assert.True(paths.TryGetProperty("/health/live", out _));
     }
 
     [Fact]
@@ -78,5 +79,73 @@ public sealed class OpenApiTests : IDisposable
         Assert.True(login.GetProperty("responses").TryGetProperty("401", out _));
         Assert.True(me.GetProperty("responses").TryGetProperty("200", out _));
         Assert.True(me.GetProperty("responses").TryGetProperty("401", out _));
+    }
+
+    [Fact]
+    public async Task GetOpenApiDocument_DocumentsInvoiceCrudFiltersAndConcurrency()
+    {
+        using var response = await _client.GetAsync("/openapi/v1.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var paths = document.RootElement.GetProperty("paths");
+        var collection = paths.GetProperty("/api/invoices");
+        var resource = paths.GetProperty("/api/invoices/{id}");
+
+        Assert.True(collection.TryGetProperty("post", out var create));
+        Assert.True(collection.TryGetProperty("get", out var list));
+        Assert.True(resource.TryGetProperty("get", out _));
+        Assert.True(resource.TryGetProperty("put", out var update));
+        Assert.True(resource.TryGetProperty("delete", out var delete));
+
+        var listParameters = list.GetProperty("parameters")
+            .EnumerateArray()
+            .Select(parameter => parameter.GetProperty("name").GetString())
+            .ToArray();
+
+        Assert.Contains("pageNumber", listParameters);
+        Assert.Contains("pageSize", listParameters);
+        Assert.Contains("customerId", listParameters);
+        Assert.Contains("status", listParameters);
+        Assert.Contains("issueDateFrom", listParameters);
+        Assert.Contains("issueDateTo", listParameters);
+        Assert.Contains("search", listParameters);
+        Assert.Contains("sortBy", listParameters);
+        Assert.Contains("sortDirection", listParameters);
+
+        Assert.True(create.GetProperty("responses").TryGetProperty("201", out _));
+        Assert.True(update.GetProperty("responses").TryGetProperty("409", out _));
+        Assert.Contains(
+            delete.GetProperty("parameters").EnumerateArray(),
+            parameter => parameter.GetProperty("name").GetString() == "concurrencyToken");
+    }
+
+    [Fact]
+    public async Task GetOpenApiDocument_DocumentsInvoiceLifecycleEndpoints()
+    {
+        using var response = await _client.GetAsync("/openapi/v1.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var paths = document.RootElement.GetProperty("paths");
+        var lifecyclePaths = new[]
+        {
+            "/api/invoices/{id}/send",
+            "/api/invoices/{id}/mark-paid",
+            "/api/invoices/{id}/cancel",
+        };
+
+        foreach (var path in lifecyclePaths)
+        {
+            var operation = paths.GetProperty(path).GetProperty("post");
+
+            Assert.True(operation.TryGetProperty("requestBody", out var requestBody));
+            Assert.True(requestBody.GetProperty("required").GetBoolean());
+            Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
+            Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
+            Assert.True(operation.GetProperty("responses").TryGetProperty("401", out _));
+            Assert.True(operation.GetProperty("responses").TryGetProperty("404", out _));
+            Assert.True(operation.GetProperty("responses").TryGetProperty("409", out _));
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using InvoiceFlow.Api.Features.Auth;
 using InvoiceFlow.Api.Features.Customers;
 using InvoiceFlow.IntegrationTests.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceFlow.IntegrationTests;
@@ -217,6 +218,96 @@ public sealed class CustomerListTests(PostgresContainerFixture fixture) : Custom
         Assert.NotNull(descendingPayload);
         Assert.Equal(expectedAscending, ascendingPayload.Items.Select(item => item.Id));
         Assert.Equal(expectedDescending, descendingPayload.Items.Select(item => item.Id));
+    }
+
+    [Theory]
+    [InlineData("email", "asc")]
+    [InlineData("email", "desc")]
+    [InlineData("createdAt", "asc")]
+    [InlineData("createdAt", "desc")]
+    [InlineData("updatedAt", "asc")]
+    [InlineData("updatedAt", "desc")]
+    public async Task List_SortsByEveryDocumentedField(string sortBy, string sortDirection)
+    {
+        var (owner, token) = await CreateUserWithTokenAsync(
+            $"sort-fields-{sortBy}-{sortDirection}@example.com");
+
+        // Insertion order (Zulu, Alpha, Mike) differs from name order so each assertion
+        // proves the requested field is used rather than the default sort.
+        await CreateCustomerDirectlyAsync(owner.Id, "Zulu", "c@example.com");
+        var alpha = await CreateCustomerDirectlyAsync(owner.Id, "Alpha", "a@example.com");
+        var mike = await CreateCustomerDirectlyAsync(owner.Id, "Mike", "b@example.com");
+
+        using (var updateAlpha = await SendJsonAsync(
+            HttpMethod.Put,
+            $"/api/customers/{alpha.Id}",
+            token,
+            new { name = "Alpha Updated", email = "a@example.com" }))
+        {
+            Assert.Equal(HttpStatusCode.OK, updateAlpha.StatusCode);
+        }
+
+        using (var updateMike = await SendJsonAsync(
+            HttpMethod.Put,
+            $"/api/customers/{mike.Id}",
+            token,
+            new { name = "Mike Updated", email = "b@example.com" }))
+        {
+            Assert.Equal(HttpStatusCode.OK, updateMike.StatusCode);
+        }
+
+        await using var context = Fixture.CreateDbContext();
+        var query = context.Customers.Where(customer => customer.OwnerId == owner.Id);
+        var descending = sortDirection == "desc";
+
+        query = sortBy switch
+        {
+            "email" => descending
+                ? query.OrderByDescending(customer => customer.Email).ThenBy(customer => customer.Id)
+                : query.OrderBy(customer => customer.Email).ThenBy(customer => customer.Id),
+            "createdAt" => descending
+                ? query.OrderByDescending(customer => customer.CreatedAt).ThenBy(customer => customer.Id)
+                : query.OrderBy(customer => customer.CreatedAt).ThenBy(customer => customer.Id),
+            "updatedAt" => descending
+                ? query.OrderByDescending(customer => customer.UpdatedAt).ThenBy(customer => customer.Id)
+                : query.OrderBy(customer => customer.UpdatedAt).ThenBy(customer => customer.Id),
+            _ => throw new InvalidOperationException($"Unexpected sort field '{sortBy}'."),
+        };
+
+        var expected = await query.Select(customer => customer.Id).ToListAsync();
+
+        using var response = await SendWithTokenAsync(
+            HttpMethod.Get,
+            $"/api/customers?sortBy={sortBy}&sortDirection={sortDirection}&pageSize=100",
+            token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<PagedResponse<CustomerResponse>>();
+
+        Assert.NotNull(payload);
+        Assert.Equal(expected, payload.Items.Select(item => item.Id));
+    }
+
+    [Theory]
+    [InlineData("sortBy=ownerId")]
+    [InlineData("sortBy=unknown")]
+    [InlineData("sortDirection=sideways")]
+    public async Task List_WithInvalidSort_ReturnsBadRequest(string queryString)
+    {
+        var (_, token) = await CreateUserWithTokenAsync($"sort-invalid-{Guid.NewGuid():N}@example.com");
+
+        using var response = await SendWithTokenAsync(
+            HttpMethod.Get,
+            $"/api/customers?{queryString}",
+            token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.NotNull(problem);
+        Assert.NotEmpty(problem.Errors);
     }
 
     [Fact]

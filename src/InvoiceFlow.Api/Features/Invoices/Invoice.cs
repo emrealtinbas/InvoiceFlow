@@ -5,7 +5,7 @@ using InvoiceFlow.Api.Infrastructure.Persistence;
 namespace InvoiceFlow.Api.Features.Invoices;
 
 /// <summary>
-/// An invoice issued to a customer. Totals and lifecycle transitions are handled in later phases.
+/// An invoice issued to a customer. Phase 5 calculates totals; Phase 6 handles lifecycle transitions.
 /// </summary>
 public sealed class Invoice : IAuditableEntity
 {

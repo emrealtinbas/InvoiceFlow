@@ -7,6 +7,9 @@ namespace InvoiceFlow.IntegrationTests.Persistence;
 /// <summary>
 /// Starts a single PostgreSQL container for the whole test collection, applies the real
 /// EF Core migrations once, and provides a clean database for every test.
+/// Isolation strategy: one container per collection; every database test truncates all
+/// application tables and restarts the invoice-number sequence before it runs. The
+/// collection serializes tests, so reset cannot overlap another test.
 /// </summary>
 public sealed class PostgresContainerFixture : IAsyncLifetime
 {
@@ -52,5 +55,8 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
                 "AspNetUsers"
             RESTART IDENTITY CASCADE;
             """);
+
+        await context.Database.ExecuteSqlRawAsync(
+            """ALTER SEQUENCE "InvoiceNumberSequence" RESTART WITH 1;""");
     }
 }

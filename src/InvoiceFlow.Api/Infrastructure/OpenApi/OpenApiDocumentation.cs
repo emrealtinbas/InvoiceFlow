@@ -43,7 +43,15 @@ internal static class OpenApiDocumentation
                     },
                 ];
 
-                document.Paths["/health"] = CreateHealthPathItem();
+                document.Paths["/health"] = CreateHealthPathItem(
+                    "Reports API readiness, including database connectivity.",
+                    "The API and its database are healthy.",
+                    "The API is running but a dependency is unhealthy.");
+
+                document.Paths["/health/live"] = CreateHealthPathItem(
+                    "Reports API liveness without checking external dependencies.",
+                    "The API process is running.",
+                    "Liveness is only unavailable when the process itself is unhealthy.");
 
                 return Task.CompletedTask;
             });
@@ -68,24 +76,27 @@ internal static class OpenApiDocumentation
         return services;
     }
 
-    private static OpenApiPathItem CreateHealthPathItem() =>
+    private static OpenApiPathItem CreateHealthPathItem(
+        string summary,
+        string healthyDescription,
+        string unhealthyDescription) =>
         new()
         {
             Operations = new Dictionary<HttpMethod, OpenApiOperation>
             {
                 [HttpMethod.Get] = new()
                 {
-                    Summary = "Reports API readiness, including database connectivity.",
+                    Summary = summary,
                     Security = [],
                     Responses = new OpenApiResponses
                     {
                         ["200"] = new OpenApiResponse
                         {
-                            Description = "The API and its database are healthy.",
+                            Description = healthyDescription,
                         },
                         ["503"] = new OpenApiResponse
                         {
-                            Description = "The API is running but a dependency is unhealthy.",
+                            Description = unhealthyDescription,
                         },
                     },
                 },

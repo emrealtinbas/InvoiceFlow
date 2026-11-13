@@ -36,5 +36,19 @@ public sealed class HealthEndpointTests : IDisposable
         Assert.Equal("Healthy", payload.Status);
     }
 
+    [Fact]
+    public async Task GetHealthLive_ReturnsOkWithHealthyStatus()
+    {
+        using var response = await _client.GetAsync("/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+
+        var payload = await response.Content.ReadFromJsonAsync<HealthResponse>();
+
+        Assert.NotNull(payload);
+        Assert.Equal("Healthy", payload.Status);
+    }
+
     private sealed record HealthResponse(string Status);
 }

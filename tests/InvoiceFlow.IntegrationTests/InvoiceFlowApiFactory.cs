@@ -1,5 +1,6 @@
 using System.Globalization;
 using InvoiceFlow.Api.Features.Auth;
+using InvoiceFlow.IntegrationTests.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -19,20 +20,25 @@ public sealed class InvoiceFlowApiFactory : WebApplicationFactory<Program>
     private readonly string? _connectionString;
     private readonly bool _failRoleAssignment;
     private readonly string _environment;
+    private readonly IReadOnlyDictionary<string, string?>? _configuration;
 
     public InvoiceFlowApiFactory()
     {
         _environment = "Development";
+        _connectionString = TestDatabase.UnavailableConnectionString;
     }
 
     public InvoiceFlowApiFactory(
-        string? connectionString,
+        string? connectionString = null,
         bool failRoleAssignment = false,
-        string environment = "Development")
+        string environment = "Development",
+        IReadOnlyDictionary<string, string?>? configuration = null)
     {
-        _connectionString = connectionString;
+        // Never fall back to the developer connection string from appsettings.json.
+        _connectionString = connectionString ?? TestDatabase.UnavailableConnectionString;
         _failRoleAssignment = failRoleAssignment;
         _environment = environment;
+        _configuration = configuration;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -51,8 +57,19 @@ public sealed class InvoiceFlowApiFactory : WebApplicationFactory<Program>
             builder.UseSetting("ConnectionStrings:DefaultConnection", _connectionString);
         }
 
+        if (_configuration is { Count: > 0 })
+        {
+            foreach (var (key, value) in _configuration)
+            {
+                builder.UseSetting(key, value);
+            }
+        }
+
         builder.ConfigureTestServices(services =>
         {
+            // Lets a test choose the rate-limit partition without trusting a production header.
+            services.AddSingleton<IStartupFilter, TestRemoteIpStartupFilter>();
+
             // The authorization test endpoints live in this test assembly only.
             services.AddControllers()
                 .AddApplicationPart(typeof(TestAuthorizationController).Assembly);

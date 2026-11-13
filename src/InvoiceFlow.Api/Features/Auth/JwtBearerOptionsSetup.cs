@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using InvoiceFlow.Api.Infrastructure.Observability;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -69,13 +70,18 @@ public sealed class JwtBearerOptionsSetup(IOptions<JwtOptions> jwtOptions)
 
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
 
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status401Unauthorized,
+            Title = "Unauthorized",
+            Detail = "Authentication is required to access this resource.",
+            Instance = context.HttpContext.Request.Path,
+        };
+
+        AddCorrelationId(problem, context.HttpContext);
+
         await context.Response.WriteAsJsonAsync(
-            new ProblemDetails
-            {
-                Status = StatusCodes.Status401Unauthorized,
-                Title = "Unauthorized",
-                Detail = "Authentication is required to access this resource.",
-            },
+            problem,
             ProblemJsonOptions,
             ProblemDetailsContentType);
     }
@@ -89,15 +95,28 @@ public sealed class JwtBearerOptionsSetup(IOptions<JwtOptions> jwtOptions)
 
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
 
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status403Forbidden,
+            Title = "Forbidden",
+            Detail = "You do not have permission to access this resource.",
+            Instance = context.HttpContext.Request.Path,
+        };
+
+        AddCorrelationId(problem, context.HttpContext);
+
         await context.Response.WriteAsJsonAsync(
-            new ProblemDetails
-            {
-                Status = StatusCodes.Status403Forbidden,
-                Title = "Forbidden",
-                Detail = "You do not have permission to access this resource.",
-            },
+            problem,
             ProblemJsonOptions,
             ProblemDetailsContentType);
+    }
+
+    private static void AddCorrelationId(ProblemDetails problem, HttpContext httpContext)
+    {
+        var correlationId = httpContext.GetCorrelationId();
+
+        problem.Extensions["traceId"] = correlationId;
+        problem.Extensions["correlationId"] = correlationId;
     }
 
     private const string ProblemDetailsContentType = "application/problem+json";

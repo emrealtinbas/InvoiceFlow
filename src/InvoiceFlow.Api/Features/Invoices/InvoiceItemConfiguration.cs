@@ -42,7 +42,7 @@ public sealed class InvoiceItemConfiguration : IEntityTypeConfiguration<InvoiceI
         builder.HasIndex(item => item.InvoiceId);
 
         // Items are owned by their invoice; deleting an invoice removes its lines.
-        // Draft-only deletion rules are enforced by the application in Phase 6.
+        // Draft-only deletion rules are enforced by the application in Phase 5.
         builder.HasOne(item => item.Invoice)
             .WithMany(invoice => invoice.Items)
             .HasForeignKey(item => item.InvoiceId)

@@ -1,7 +1,9 @@
 using InvoiceFlow.Api.Infrastructure.Persistence;
+using InvoiceFlow.Api.Infrastructure.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceFlow.Api.Features.Auth;
@@ -19,9 +21,11 @@ public sealed class AuthController(
     /// <summary>Registers a new user with the User role.</summary>
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitingPolicies.Register)]
     [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -85,8 +89,10 @@ public sealed class AuthController(
     /// <summary>Authenticates a user and returns a signed JWT access token.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitingPolicies.Login)]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Login(LoginRequest request)
     {
         var user = await userManager.FindByEmailAsync(request.Email.Trim());

@@ -1,0 +1,70 @@
+name: invoiceflow
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-invoiceflow}
+      POSTGRES_USER: ${POSTGRES_USER:-invoiceflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    # The database port is intentionally not published. Only the API can reach it,
+    # over the private Compose network, using the service name "postgres".
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-invoiceflow};Username=${POSTGRES_USER:-invoiceflow};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?Jwt__SigningKey must be set in .env}
+      Jwt__Issuer: ${Jwt__Issuer:-InvoiceFlow}
+      Jwt__Audience: ${Jwt__Audience:-InvoiceFlow.Api}
+      Jwt__AccessTokenMinutes: ${Jwt__AccessTokenMinutes:-30}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080;
+          printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3;
+          IFS= read -r -t 3 line <&3; [[ "$$line" == *"200"* ]]'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Explicit, one-off migration runner. It is excluded from `docker compose up`
+  # by the "tools" profile and must be invoked directly:
+  #   docker compose run --rm migrator
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-invoiceflow};Username=${POSTGRES_USER:-invoiceflow};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+    restart: "no"
+
+volumes:
+  postgres-data:

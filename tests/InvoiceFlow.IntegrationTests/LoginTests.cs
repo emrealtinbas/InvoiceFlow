@@ -83,16 +83,20 @@ public sealed class LoginTests(PostgresContainerFixture fixture) : AuthTestBase(
         Assert.Equal(HttpStatusCode.Unauthorized, wrongPassword.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, unknownEmail.StatusCode);
 
-        var wrongPasswordBody = await wrongPassword.Content.ReadAsStringAsync();
-        var unknownEmailBody = await unknownEmail.Content.ReadAsStringAsync();
+        var wrongPasswordProblem = await wrongPassword.Content.ReadFromJsonAsync<ProblemDetails>();
+        var unknownEmailProblem = await unknownEmail.Content.ReadFromJsonAsync<ProblemDetails>();
 
-        Assert.Equal(wrongPasswordBody, unknownEmailBody);
+        Assert.NotNull(wrongPasswordProblem);
+        Assert.NotNull(unknownEmailProblem);
 
-        var problem = await unknownEmail.Content.ReadFromJsonAsync<ProblemDetails>();
-
-        Assert.NotNull(problem);
-        Assert.Equal((int)HttpStatusCode.Unauthorized, problem.Status);
-        Assert.Equal("Unauthorized", problem.Title);
+        // The bodies are intentionally request-specific because they carry a correlation
+        // identifier. Account existence must not be observable through any other field.
+        Assert.Equal(wrongPasswordProblem.Status, unknownEmailProblem.Status);
+        Assert.Equal(wrongPasswordProblem.Title, unknownEmailProblem.Title);
+        Assert.Equal(wrongPasswordProblem.Detail, unknownEmailProblem.Detail);
+        Assert.Equal((int)HttpStatusCode.Unauthorized, unknownEmailProblem.Status);
+        Assert.Equal("Unauthorized", unknownEmailProblem.Title);
+        Assert.Equal("Invalid e-mail or password.", unknownEmailProblem.Detail);
     }
 
     [Fact]

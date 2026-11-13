@@ -1,232 +1,224 @@
 # InvoiceFlow API
 
-A RESTful Customer & Invoice Management API for small businesses, built with ASP.NET Core on .NET 10.
+**Production-oriented invoice management REST API built with ASP.NET Core and PostgreSQL.**
 
-> **Independent sample project.** InvoiceFlow API is a personal portfolio project. It is not client work,
-> it is not affiliated with any company, and it does not contain any real customer or invoice data.
+InvoiceFlow is a portfolio project that demonstrates how a small-business invoicing backend can be built
+with explicit business rules, secure data ownership, exact financial arithmetic, real-database integration
+tests, and a reproducible container workflow. It is an independent sample application—not a payment
+processor, accounting product, or client system—and contains no real customer data.
 
-## Status
+## What this project demonstrates
 
-**Phase 3 — Authentication & Authorization is complete.** The API supports registration, login with JWT
-bearer tokens, role-based authorization, `GET /api/auth/me`, and explicit admin provisioning. Customer and
-invoice endpoints are planned for later phases; see [docs/development-plan.md](docs/development-plan.md).
+- JWT authentication, ASP.NET Core Identity, and User/Admin authorization
+- Owner-isolated customer and invoice management
+- Multi-item Draft invoices with deterministic `decimal` calculations and line-level rounding
+- Guarded invoice lifecycle: Draft → Sent → Paid, with Draft/Sent → Cancelled
+- Optimistic concurrency through opaque tokens backed by PostgreSQL `xmin`
+- Database-side pagination, filtering, search, and allow-listed sorting
+- RFC 9457 ProblemDetails across validation, authentication, conflicts, rate limits, and server errors
+- Correlation IDs, structured request logging, explicit CORS, and fixed-window rate limiting
+- Liveness and PostgreSQL-backed readiness checks
+- Explicit EF Core migrations and a separate migration-bundle container
+- Non-root multi-stage Docker image and Docker Compose environment
+- 284 tests, including PostgreSQL 17 integration tests through Testcontainers
+- GitHub Actions for Release builds, tests, Docker builds, and Compose validation
 
 ## Technology stack
 
-| Area          | Choice                                                          |
-| ------------- | --------------------------------------------------------------- |
-| Runtime       | .NET 10 / ASP.NET Core                                          |
-| Language      | C# (nullable reference types, file-scoped namespaces)           |
-| API style     | Controller-based REST API                                       |
-| API docs      | Microsoft.AspNetCore.OpenApi + Swagger UI                       |
-| Persistence   | PostgreSQL 17, EF Core 10, Npgsql provider, EF Core migrations  |
-| Identity      | ASP.NET Core Identity (`IdentityUser<Guid>`, `IdentityRole<Guid>`) |
-| Auth          | JWT bearer tokens (HS256), Admin/User roles, authorization policies |
-| Tests         | xUnit, Testcontainers for PostgreSQL, `WebApplicationFactory`   |
-| Validation    | Data annotations + Identity password policy (FluentValidation planned, Phase 7) |
-| Deployment    | Docker (planned, Phase 9)                                       |
+| Area | Technology |
+| --- | --- |
+| Runtime | .NET 10, ASP.NET Core controller-based Web API |
+| Language | C# with nullable reference types and warnings as errors |
+| Persistence | PostgreSQL 17, EF Core 10, Npgsql, explicit migrations |
+| Identity | ASP.NET Core Identity with `Guid` users and roles |
+| Authentication | HS256 JWT bearer tokens |
+| API documentation | OpenAPI and Swagger UI in Development |
+| Testing | xUnit, `WebApplicationFactory`, Testcontainers |
+| Operations | Structured logging, correlation IDs, rate limiting, health checks |
+| Delivery | Docker, Docker Compose, GitHub Actions |
 
-## Solution structure
+## Architecture
 
-```text
-InvoiceFlow/
-├── src/
-│   └── InvoiceFlow.Api/
-│       ├── Features/
-│       │   ├── Auth/            # ApplicationUser, Identity, JWT, auth endpoints, provisioning
-│       │   ├── Customers/       # Customer entity and EF configuration
-│       │   └── Invoices/        # Invoice, InvoiceItem, InvoiceStatus + EF configurations
-│       ├── Common/              # shared API concerns (errors, pagination, ...)
-│       ├── Infrastructure/
-│       │   ├── HealthChecks/    # health response contract
-│       │   ├── OpenApi/         # OpenAPI document and Bearer security scheme
-│       │   └── Persistence/     # AppDbContext, audit contract, migrations
-│       ├── Program.cs           # composition root and HTTP pipeline
-│       └── appsettings.json
-├── tests/
-│   ├── InvoiceFlow.UnitTests/          # JWT, options, current-user, entity, and model tests
-│   └── InvoiceFlow.IntegrationTests/   # HTTP + real PostgreSQL (Testcontainers)
-├── docs/
-│   ├── architecture.md
-│   ├── requirements.md
-│   └── development-plan.md
-├── Directory.Build.props
-├── dotnet-tools.json
-├── global.json
-└── InvoiceFlow.slnx
+InvoiceFlow is a feature-oriented modular monolith. ASP.NET Core hosts one deployable process, feature
+controllers enforce authorization and business workflows, EF Core manages transactions and persistence,
+and PostgreSQL provides relational integrity, exact numeric storage, sequencing, and row versions.
+
+```mermaid
+flowchart TB
+    Client[HTTP clients<br/>curl / Swagger / applications]
+    Compose[Docker Compose]
+    Tests[xUnit integration tests<br/>Testcontainers]
+
+    subgraph API[ASP.NET Core API]
+        Middleware[HTTP pipeline<br/>correlation ID · logging · errors<br/>CORS · rate limiting]
+        Auth[JWT authentication<br/>authorization policies]
+        Endpoints[Feature endpoints<br/>Auth · Customers · Invoices]
+        Rules[Business rules<br/>validation · calculations · lifecycle<br/>ownership · concurrency]
+        Health[Health checks<br/>liveness · readiness]
+        EF[EF Core 10<br/>DbContext · migrations]
+        Logs[Structured console logs]
+
+        Middleware --> Auth --> Endpoints --> Rules --> EF
+        Middleware --> Logs
+        Health --> EF
+    end
+
+    DB[(PostgreSQL 17)]
+
+    Client --> Middleware
+    Client --> Health
+    EF --> DB
+    Compose -. runs .-> API
+    Compose -. runs .-> DB
+    Tests -. starts isolated .-> DB
+    Tests --> API
 ```
 
-## Prerequisites
+There are no microservices, message brokers, caches, or background workers. See
+[Architecture](docs/architecture.md) and [Engineering decisions](docs/engineering-decisions.md) for the
+boundaries and trade-offs.
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (the repository pins `10.0.404` via `global.json`)
-- PostgreSQL 17 for local development (Docker or a native installation)
-- Docker for the integration tests (Testcontainers starts PostgreSQL automatically)
-- A random JWT signing key of at least 32 bytes, supplied through `Jwt__SigningKey`
+## Quick start with Docker Compose
 
-No database is required to start the API, but readiness reports unhealthy until one is reachable.
-
-## Local development
-
-### 1. Start PostgreSQL
+Prerequisites: Docker with Compose v2, `curl`, and `jq` for the demo.
 
 ```bash
-docker run --name invoiceflow-postgres \
-  -e POSTGRES_USER=invoiceflow \
-  -e POSTGRES_PASSWORD=invoiceflow \
-  -e POSTGRES_DB=invoiceflow \
-  -p 5432:5432 \
-  -d postgres:17-alpine
+cp .env.example .env
+# Replace POSTGRES_PASSWORD and Jwt__SigningKey in .env with local values.
+
+docker compose build
+docker compose up -d
+docker compose run --rm migrator
+
+curl http://localhost:8080/health/live
+curl http://localhost:8080/health
 ```
 
-### 2. Configure connection and JWT secrets
+Compose exposes only the API at `127.0.0.1:8080`; PostgreSQL remains on the private network. Migrations are
+never applied automatically. Existing data is retained in the `invoiceflow_postgres-data` named volume.
 
-`appsettings.json` contains a safe example connection string **without a password** and the non-secret JWT
-settings (issuer, audience, lifetime). Supply the real values through environment variables:
+Run the complete, repeatable demo without deleting or resetting data:
 
 ```bash
-export ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=invoiceflow;Username=invoiceflow;Password=invoiceflow"
+./scripts/demo.sh
+```
+
+The script creates a uniquely named User, customer, and multi-item invoice; updates the Draft; sends and
+marks it Paid; then verifies that a terminal invoice cannot be updated. It does not print the password or
+JWT. See [API examples](docs/api-examples.md) for every request and representative response.
+
+Stop containers without deleting the database:
+
+```bash
+docker compose down
+```
+
+## Local .NET development
+
+The repository pins the .NET SDK in `global.json`. Start PostgreSQL, set the connection string and a random
+signing key, then apply migrations explicitly:
+
+```bash
+export ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=invoiceflow;Username=invoiceflow;Password=<local-password>"
 export Jwt__SigningKey="$(openssl rand -base64 48)"
-```
 
-The signing key is read only from `Jwt__SigningKey`. The application refuses to start when it is missing
-or shorter than 32 bytes, and it never logs the key or full access tokens. Never commit real credentials.
-
-### 3. Apply migrations
-
-The repository uses a local `dotnet-ef` tool (pinned in `dotnet-tools.json`):
-
-```bash
 dotnet tool restore
-dotnet ef database update --project src/InvoiceFlow.Api --startup-project src/InvoiceFlow.Api
-```
+dotnet ef database update \
+  --project src/InvoiceFlow.Api \
+  --startup-project src/InvoiceFlow.Api
 
-Migrations are applied explicitly; the application never calls `Migrate()` or `EnsureCreated()` on startup.
-
-### 4. Run the API
-
-```bash
-dotnet restore
-dotnet build
 dotnet run --project src/InvoiceFlow.Api
 ```
 
-| Resource        | URL                                                   |
-| --------------- | ----------------------------------------------------- |
-| Health/readiness| `http://localhost:5188/health`                        |
-| Swagger UI      | `http://localhost:5188/swagger` (Development only)    |
-| OpenAPI JSON    | `http://localhost:5188/openapi/v1.json` (Development only) |
+Development resources use the launch profile:
 
-`GET /health` is a readiness check that includes PostgreSQL connectivity:
+| Resource | URL |
+| --- | --- |
+| Swagger UI | `http://localhost:5188/swagger` |
+| OpenAPI document | `http://localhost:5188/openapi/v1.json` |
+| Liveness | `http://localhost:5188/health/live` |
+| Readiness | `http://localhost:5188/health` |
 
-- `200 OK` — `{"status":"Healthy"}`
-- `503 Service Unavailable` — `{"status":"Unhealthy"}`
+Swagger and OpenAPI are disabled outside Development.
 
-The endpoint never exposes connection strings or exception details.
+## API workflow
 
-### 5. Provision an admin (optional)
-
-Admin provisioning is disabled by default and is never part of normal application startup. It is an
-explicit command:
-
-```bash
-export AdminProvisioning__Enabled=true
-export AdminProvisioning__Email="admin@example.com"
-export AdminProvisioning__Password="<strong-admin-password>"
-
-dotnet run --project src/InvoiceFlow.Api -- --provision-admin
+```text
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/customers
+POST /api/invoices
+PUT  /api/invoices/{id}
+POST /api/invoices/{id}/send
+POST /api/invoices/{id}/mark-paid
 ```
 
-The command creates the `Admin` and `User` roles if they are missing, creates the admin account once, and is
-safe to run repeatedly. It never overwrites an existing password, never promotes an existing normal user to
-Admin, and never logs the password. Unset the `AdminProvisioning__*` variables after provisioning.
+Invoice totals are server-controlled. For example, these lines:
 
-## Authentication and authorization
-
-### Endpoints
-
-| Method | Path                 | Authentication | Success | Errors                                         |
-| ------ | -------------------- | -------------- | ------- | ---------------------------------------------- |
-| POST   | `/api/auth/register` | Anonymous      | `201`   | `400` validation, `409` duplicate e-mail       |
-| POST   | `/api/auth/login`    | Anonymous      | `200`   | `401` invalid credentials or locked-out account |
-| GET    | `/api/auth/me`       | Bearer JWT     | `200`   | `401` missing/invalid token or deleted user     |
-
-Registration returns `{ "id", "email", "role": "User" }` and does **not** sign the user in. Login returns
-`{ "accessToken", "tokenType": "Bearer", "expiresIn" }`. `/api/auth/me` returns `{ "id", "email", "roles" }`.
-
-### Password and lockout policy
-
-- Minimum length 12, with upper-case, lower-case, digit, and non-alphanumeric characters.
-- Passwords are hashed by ASP.NET Core Identity (PBKDF2) and never stored or logged in plain text.
-- Five failed login attempts lock the account for 15 minutes.
-- Lockout is enabled for newly registered users.
-- Public registration always assigns only the `User` role; a role supplied by the client is ignored.
-
-### JWT
-
-- HS256 signing with issuer and audience validation.
-- Claims: `sub` (user id), `email`, `role`, `iss`, `aud`, `iat`, `exp`, `jti`.
-- Default lifetime: 30 minutes (`Jwt:AccessTokenMinutes`).
-- Signature, issuer, audience, lifetime, and algorithm are validated; unsigned and non-HS256 tokens are
-  rejected. Clock skew is limited to 5 seconds.
-- Refresh tokens, OAuth social login, e-mail verification, password reset, and two-factor authentication
-  are out of scope for Phase 3.
-
-### Roles and policies
-
-| Policy              | Requirement                    |
-| ------------------- | ------------------------------ |
-| `AdminOnly`         | Authenticated user with `Admin` |
-| `AuthenticatedUser` | Any authenticated user          |
-
-Unauthenticated requests receive `401` with a ProblemDetails body; authenticated requests without the
-required role receive `403`.
-
-### Swagger UI workflow
-
-1. Start the API in Development and open `http://localhost:5188/swagger`.
-2. Call `POST /api/auth/register` to create a User account.
-3. Call `POST /api/auth/login` and copy the `accessToken`.
-4. Click **Authorize**, paste the token (Swagger UI adds the `Bearer` prefix), and confirm.
-5. Call `GET /api/auth/me` to see the authenticated identity and roles.
-
-### curl examples
-
-```bash
-# Register a User account (201 Created)
-curl -i -X POST http://localhost:5188/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"StrongPass123!"}'
-
-# Log in and print the access token (200 OK)
-curl -s -X POST http://localhost:5188/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"StrongPass123!"}'
-
-# Read the authenticated user (replace <access-token>)
-curl -s http://localhost:5188/api/auth/me \
-  -H "Authorization: Bearer <access-token>"
-
-# Missing or invalid token (401 Unauthorized)
-curl -i http://localhost:5188/api/auth/me
+```json
+[
+  { "description": "API implementation", "quantity": 2.5, "unitPrice": 1200.00, "taxRate": 20.00 },
+  { "description": "Integration testing", "quantity": 3, "unitPrice": 450.00, "taxRate": 10.00 }
+]
 ```
 
-## Tests
+produce `subtotal: 4350.00`, `taxTotal: 735.00`, and `grandTotal: 5085.00`. Clients submit no calculated
+amounts. Update and lifecycle requests must use the latest opaque `concurrencyToken`; stale writes return
+`409 Conflict`.
+
+Full request and response contracts are in [docs/api-examples.md](docs/api-examples.md).
+
+## Testing
 
 ```bash
-dotnet test
+dotnet restore InvoiceFlow.slnx
+dotnet build InvoiceFlow.slnx --configuration Release --no-restore
+dotnet test InvoiceFlow.slnx --configuration Release --no-build
 ```
 
-- **Unit tests** verify JWT option validation, token claims/lifetime, current-user parsing, entity defaults,
-  and EF Core model metadata. They do not need a database.
-- **Integration tests** start a real PostgreSQL container with Testcontainers, apply the real migrations,
-  and verify registration, login, lockout, JWT validation, authorization policies, `/api/auth/me`, admin
-  provisioning, persistence, database constraints, error handling, and the health endpoint. Docker must be
-  running.
+- **75 unit tests** cover deterministic calculations, lifecycle rules, token encoding, JWT behavior,
+  validation, model metadata, correlation IDs, and rate-limit partitioning.
+- **209 integration tests** boot the real HTTP pipeline and use disposable PostgreSQL 17 containers with
+  committed migrations. They cover authentication, authorization, CRUD, financial persistence, lifecycle,
+  concurrency, database constraints, ProblemDetails, CORS, rate limits, and health checks.
 
-Testcontainers reuses a single container for the whole test collection and truncates data between tests.
+Docker must be running for integration tests. The last local Phase 10 verification passed all **284 tests**
+with zero build warnings and errors. The GitHub Actions workflow independently repeats the Release build,
+unit and PostgreSQL integration tests, Docker image builds, and Compose validation.
+
+## Security considerations
+
+- Ownership is derived from the validated JWT, never accepted from request bodies.
+- Cross-owner resources return `404`, reducing resource-existence disclosure.
+- Password hashing and lockout use ASP.NET Core Identity; public registration creates only Users.
+- JWT signature, issuer, audience, lifetime, and HS256 algorithm are validated.
+- Signing keys and database passwords are supplied at runtime; `.env` is ignored.
+- Logs exclude bodies, credentials, authorization headers, tokens, and connection strings.
+- CORS allows no origins by default; trusted reverse proxies must be configured explicitly.
+- Containers run as a non-root user and PostgreSQL is not exposed by Compose.
+
+Important limitations: JWTs are not revocable before expiry, rate limits are in-memory per API instance,
+TLS termination and secret storage are deployment responsibilities, and this repository has not undergone
+an independent security audit.
+
+## Scope
+
+InvoiceFlow intentionally excludes real payment processing, refunds, PDF generation, e-mail delivery,
+webhooks, audit-history tables, multi-currency conversion, cloud infrastructure, and a frontend. Marking an
+invoice Paid records only a business status transition.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — architectural decisions, ER diagram, auth design, and persistence details
-- [Requirements](docs/requirements.md) — business requirements and decisions
-- [Development plan](docs/development-plan.md) — phased roadmap and current progress
+- [API examples](docs/api-examples.md)
+- [Architecture](docs/architecture.md)
+- [Engineering decisions](docs/engineering-decisions.md)
+- [Requirements](docs/requirements.md)
+- [Development plan](docs/development-plan.md)
+- [Release readiness](docs/release-readiness.md)
+- [Contributing](CONTRIBUTING.md)
+- [CI workflow](.github/workflows/ci.yml)
+
+## License
+
+InvoiceFlow is available under the [MIT License](LICENSE).

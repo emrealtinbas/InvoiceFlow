@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Show SDK version
+        run: dotnet --version
+
+      - name: Restore dependencies
+        run: dotnet restore InvoiceFlow.slnx
+
+      - name: Build Release
+        run: dotnet build InvoiceFlow.slnx --configuration Release --no-restore
+
+      - name: Verify Docker for Testcontainers
+        run: docker info
+
+      - name: Run unit tests
+        run: >
+          dotnet test tests/InvoiceFlow.UnitTests/InvoiceFlow.UnitTests.csproj
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=unit-tests.trx"
+          --results-directory artifacts/test-results/unit
+
+      - name: Run integration tests
+        run: >
+          dotnet test tests/InvoiceFlow.IntegrationTests/InvoiceFlow.IntegrationTests.csproj
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=integration-tests.trx"
+          --results-directory artifacts/test-results/integration
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build --target final --tag invoiceflow-api:ci .
+
+      - name: Build migration image
+        run: docker build --target migrator --tag invoiceflow-migrator:ci .
+
+      - name: Validate Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-placeholder-password
+          Jwt__SigningKey: ci-placeholder-signing-key-at-least-32-bytes-long
+        run: docker compose config --quiet

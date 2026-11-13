@@ -1,8 +1,15 @@
+using System.Text.Json.Serialization;
 using InvoiceFlow.Api.Features.Auth;
+using InvoiceFlow.Api.Features.Invoices;
+using InvoiceFlow.Api.Infrastructure.Cors;
+using InvoiceFlow.Api.Infrastructure.Errors;
+using InvoiceFlow.Api.Infrastructure.Observability;
 using InvoiceFlow.Api.Infrastructure.OpenApi;
 using InvoiceFlow.Api.Infrastructure.Persistence;
+using InvoiceFlow.Api.Infrastructure.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -38,9 +45,51 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<AdminProvisioner>();
+        services.AddSingleton<InvoiceCalculator>();
+        services.AddSingleton<InvoiceLifecycle>();
+        services.AddScoped<InvoiceNumberGenerator>();
 
-        services.AddControllers();
-        services.AddProblemDetails();
+        services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
+            .AddJsonOptions(options =>
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+        services.AddProblemDetails(options =>
+        {
+            options.CustomizeProblemDetails = context =>
+            {
+                var correlationId = context.HttpContext.GetCorrelationId();
+
+                context.ProblemDetails.Instance ??= context.HttpContext.Request.Path;
+                context.ProblemDetails.Extensions["traceId"] = correlationId;
+                context.ProblemDetails.Extensions["correlationId"] = correlationId;
+            };
+        });
+
+        services.AddExceptionHandler<GlobalExceptionHandler>();
+
+        services.Configure<ApiBehaviorOptions>(options =>
+        {
+            options.InvalidModelStateResponseFactory = context =>
+            {
+                // Applies to DataAnnotations failures, malformed JSON, and model-binding
+                // errors so every validation response has the same shape.
+                var problem = new ValidationProblemDetails(context.ModelState)
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Title = "One or more validation errors occurred.",
+                    Detail = "The request could not be validated. See the errors property for details.",
+                    Instance = context.HttpContext.Request.Path,
+                };
+
+                var result = new BadRequestObjectResult(problem);
+                result.ContentTypes.Add("application/problem+json");
+
+                return result;
+            };
+        });
+
+        services.AddInvoiceFlowCors(configuration);
+        services.AddInvoiceFlowRateLimiting(configuration);
         services.AddInvoiceFlowOpenApi();
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("database");

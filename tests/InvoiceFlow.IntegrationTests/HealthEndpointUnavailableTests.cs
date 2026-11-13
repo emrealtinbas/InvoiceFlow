@@ -1,14 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using InvoiceFlow.IntegrationTests.Persistence;
 
 namespace InvoiceFlow.IntegrationTests;
 
 public sealed class HealthEndpointUnavailableTests : IDisposable
 {
-    private const string UnavailableConnectionString =
-        "Host=127.0.0.1;Port=1;Database=invoiceflow;Username=none;Password=none;Timeout=2";
-
-    private readonly InvoiceFlowApiFactory _factory = new(UnavailableConnectionString);
+    private readonly InvoiceFlowApiFactory _factory =
+        new(TestDatabase.UnavailableConnectionString);
     private readonly HttpClient _client;
 
     public HealthEndpointUnavailableTests()
@@ -33,6 +32,19 @@ public sealed class HealthEndpointUnavailableTests : IDisposable
 
         Assert.NotNull(payload);
         Assert.Equal("Unhealthy", payload.Status);
+    }
+
+    [Fact]
+    public async Task GetHealthLive_ReturnsOkWhenDatabaseIsDown()
+    {
+        using var response = await _client.GetAsync("/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<HealthResponse>();
+
+        Assert.NotNull(payload);
+        Assert.Equal("Healthy", payload.Status);
     }
 
     private sealed record HealthResponse(string Status);
