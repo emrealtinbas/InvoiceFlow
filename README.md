@@ -1,5 +1,7 @@
 # InvoiceFlow API
 
+[![CI](https://github.com/emrealtinbas/InvoiceFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/emrealtinbas/InvoiceFlow/actions/workflows/ci.yml)
+
 **Production-oriented invoice management REST API built with ASP.NET Core and PostgreSQL.**
 
 InvoiceFlow is a portfolio project that demonstrates how a small-business invoicing backend can be built

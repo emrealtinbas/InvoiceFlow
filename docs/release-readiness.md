@@ -1,7 +1,6 @@
 # Release readiness
 
-This checklist separates locally verified repository readiness from actions that require the repository
-owner or a published GitHub repository.
+This checklist records local readiness and the safeguards used for GitHub publication.
 
 ## Ready locally
 
@@ -17,14 +16,13 @@ owner or a published GitHub repository.
 - Contribution instructions and repository hygiene rules
 - MIT license approved by the repository owner
 
-## Owner decisions and publication steps
+## Publication procedure
 
-1. Review the complete Phase 5–10 release diff, then create an accurate release commit.
-2. Push to the intended public repository.
-3. Observe the first GitHub Actions run and resolve any environment-specific failure before adding a CI
-   status badge.
-4. Confirm repository visibility, description, topics, default branch, and branch protection.
-5. Create a release only after remote CI succeeds.
+1. Review the complete release diff and create an accurate commit.
+2. Push without rewriting remote history.
+3. Observe GitHub Actions and resolve failures before tagging.
+4. Confirm visibility, description, topics, default branch, license recognition, and documentation rendering.
+5. Create the release only from the commit that passed remote CI.
 
 ## Suggested GitHub presentation
 
