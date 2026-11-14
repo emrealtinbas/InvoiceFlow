@@ -1,0 +1,13 @@
+node_modules
+dist
+test-results
+playwright-report
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+README.md
+docs
+src/test
+e2e

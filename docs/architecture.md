@@ -2,8 +2,9 @@
 
 ## Overview
 
-InvoiceFlow API is a **pragmatic modular monolith**: a single deployable ASP.NET Core application whose
-code is organized by business feature rather than by technical layer. The goal is a codebase that a new
+InvoiceFlow is a React single-page application served by Nginx in front of a **pragmatic modular monolith**:
+a single deployable ASP.NET Core API whose code is organized by business feature rather than by technical
+layer. PostgreSQL is the system of record. The goal is a codebase that a new
 developer (or a potential client reviewing the repository) can understand in minutes, while leaving clear
 seams for future growth.
 
@@ -14,10 +15,10 @@ operational cost and indirection without solving a problem this product currentl
 ## System architecture
 
 ```mermaid
-flowchart TB
-    Client[HTTP clients<br/>curl / Swagger / applications]
-    Compose[Docker Compose]
-    Tests[xUnit integration tests<br/>Testcontainers]
+flowchart LR
+    Browser[Browser]
+    Web[Nginx web container<br/>React SPA + static assets<br/>same-origin /api + /health proxy]
+    Client[API clients<br/>curl / Swagger]
 
     subgraph API[ASP.NET Core modular monolith]
         Pipeline[Middleware pipeline<br/>correlation · logging · errors<br/>CORS · rate limiting]
@@ -35,16 +36,21 @@ flowchart TB
 
     PostgreSQL[(PostgreSQL 17)]
 
+    Browser --> Web
+    Web --> Pipeline
     Client --> Pipeline
     Client --> Health
     EF --> PostgreSQL
-    Compose -. runs .-> API
-    Compose -. runs .-> PostgreSQL
-    Tests --> API
-    Tests -. provisions isolated .-> PostgreSQL
+    Unit[Vitest + xUnit unit tests]
+    E2E[Playwright critical paths]
+    Integration[xUnit integration tests<br/>Testcontainers PostgreSQL]
+    E2E --> Browser
+    Integration --> API
+    Integration -. provisions isolated .-> PostgreSQL
 ```
 
-Docker Compose is a local orchestration boundary, not an application layer. Testcontainers creates separate,
+Docker Compose orchestrates PostgreSQL, a one-shot migrator, the API, and an opt-in web profile; it is not an
+application layer. Testcontainers creates separate,
 disposable PostgreSQL instances for integration tests; tests never target the Compose database.
 
 ## Why a modular monolith
@@ -90,13 +96,13 @@ benefit.
 
 ## Application boundaries
 
-| Boundary        | Responsibility                                                        |
-| --------------- | --------------------------------------------------------------------- |
-| Auth            | Registration, credential verification, JWT issuing, role assignment    |
-| Customers       | Customer ownership, CRUD, uniqueness of e-mail per owner, deletion rules |
-| Invoices        | Invoice lifecycle, line items, server-side totals, numbering           |
-| Common          | ProblemDetails conventions, pagination envelope, shared primitives     |
-| Infrastructure  | EF Core `DbContext`, migrations, health checks, auth configuration     |
+| Boundary       | Responsibility                                                           |
+| -------------- | ------------------------------------------------------------------------ |
+| Auth           | Registration, credential verification, JWT issuing, role assignment      |
+| Customers      | Customer ownership, CRUD, uniqueness of e-mail per owner, deletion rules |
+| Invoices       | Invoice lifecycle, line items, server-side totals, numbering             |
+| Common         | ProblemDetails conventions, pagination envelope, shared primitives       |
+| Infrastructure | EF Core `DbContext`, migrations, health checks, auth configuration       |
 
 Authorization is enforced at the edge of each feature: every customer and invoice query is scoped to the
 authenticated user, except for administrators.
@@ -113,7 +119,7 @@ Configured policies:
 
 | Setting               | Value                                           |
 | --------------------- | ----------------------------------------------- |
-| Unique e-mail         | Required (`User.RequireUniqueEmail`)             |
+| Unique e-mail         | Required (`User.RequireUniqueEmail`)            |
 | Password minimum      | 12 characters                                   |
 | Password complexity   | Upper-case, lower-case, digit, non-alphanumeric |
 | Lockout threshold     | 5 failed attempts                               |
@@ -155,16 +161,16 @@ minutes. No refresh token is issued in Phase 3.
 
 ### JWT claims and validation
 
-| Claim | Value | Notes |
-| ----- | ----- | ----- |
-| `sub` | User id | `Guid`; used by `ICurrentUser` |
-| `email` | User e-mail | |
-| `role` | Identity role | One claim per role (`Admin`, `User`) |
-| `iss` | `Jwt:Issuer` | Validated |
-| `aud` | `Jwt:Audience` | Validated |
-| `iat` | Issued-at | Unix seconds |
-| `exp` | Expiration | Unix seconds |
-| `jti` | Token id | Unique `Guid` |
+| Claim   | Value          | Notes                                |
+| ------- | -------------- | ------------------------------------ |
+| `sub`   | User id        | `Guid`; used by `ICurrentUser`       |
+| `email` | User e-mail    |                                      |
+| `role`  | Identity role  | One claim per role (`Admin`, `User`) |
+| `iss`   | `Jwt:Issuer`   | Validated                            |
+| `aud`   | `Jwt:Audience` | Validated                            |
+| `iat`   | Issued-at      | Unix seconds                         |
+| `exp`   | Expiration     | Unix seconds                         |
+| `jti`   | Token id       | Unique `Guid`                        |
 
 Validation is strict:
 
@@ -180,10 +186,10 @@ the host fails to start with a clear message that does not include the key value
 
 ### Authorization policies
 
-| Policy              | Definition                  | Behavior                             |
-| ------------------- | --------------------------- | ------------------------------------ |
-| `AdminOnly`         | `RequireRole("Admin")`      | `403` for authenticated non-admins   |
-| `AuthenticatedUser` | `RequireAuthenticatedUser()` | `401` for anonymous requests         |
+| Policy              | Definition                   | Behavior                           |
+| ------------------- | ---------------------------- | ---------------------------------- |
+| `AdminOnly`         | `RequireRole("Admin")`       | `403` for authenticated non-admins |
+| `AuthenticatedUser` | `RequireAuthenticatedUser()` | `401` for anonymous requests       |
 
 `JwtBearerEvents.OnChallenge` writes a `401` ProblemDetails response and `OnForbidden` writes a `403`
 ProblemDetails response. The two roles are `Admin` and `User`; public registration can only create `User`.
@@ -205,11 +211,11 @@ dotnet run --project src/InvoiceFlow.Api -- --provision-admin
 
 It is disabled by default and requires:
 
-| Setting                      | Purpose                    |
-| ---------------------------- | -------------------------- |
-| `AdminProvisioning__Enabled` | Must be `true` to run      |
-| `AdminProvisioning__Email`   | Initial admin e-mail       |
-| `AdminProvisioning__Password` | Initial admin password     |
+| Setting                       | Purpose                |
+| ----------------------------- | ---------------------- |
+| `AdminProvisioning__Enabled`  | Must be `true` to run  |
+| `AdminProvisioning__Email`    | Initial admin e-mail   |
+| `AdminProvisioning__Password` | Initial admin password |
 
 The command ensures the `Admin` and `User` roles exist, creates the admin account once, and is idempotent.
 It never overwrites an existing password, never promotes an existing non-admin account, and never logs the
@@ -360,16 +366,16 @@ Core Identity and omitted from the diagram for readability.
 
 ### Schema conventions
 
-| Data                    | PostgreSQL type      | Rationale                                            |
-| ----------------------- | -------------------- | ---------------------------------------------------- |
-| Identifiers             | `uuid`               | Non-guessable, client-generatable identifiers        |
-| Audit timestamps        | `timestamp with time zone` | Always UTC; set by `AppDbContext`               |
-| Invoice dates           | `date`               | `DateOnly` — no time component or time zone ambiguity |
-| Monetary values         | `numeric(18,2)`      | Exact decimal arithmetic; never floating point       |
-| Quantity                | `numeric(18,3)`      | Fractional units (for example hours)                 |
-| Tax rate                | `numeric(5,2)`       | Percentage, for example `20.00` for 20%              |
-| Invoice status          | `varchar(20)`        | Stable string values (`Draft`, `Sent`, `Paid`, `Cancelled`) |
-| Names and descriptions  | bounded `varchar`    | Limits documented in [requirements.md](requirements.md) |
+| Data                   | PostgreSQL type            | Rationale                                                   |
+| ---------------------- | -------------------------- | ----------------------------------------------------------- |
+| Identifiers            | `uuid`                     | Non-guessable, client-generatable identifiers               |
+| Audit timestamps       | `timestamp with time zone` | Always UTC; set by `AppDbContext`                           |
+| Invoice dates          | `date`                     | `DateOnly` — no time component or time zone ambiguity       |
+| Monetary values        | `numeric(18,2)`            | Exact decimal arithmetic; never floating point              |
+| Quantity               | `numeric(18,3)`            | Fractional units (for example hours)                        |
+| Tax rate               | `numeric(5,2)`             | Percentage, for example `20.00` for 20%                     |
+| Invoice status         | `varchar(20)`              | Stable string values (`Draft`, `Sent`, `Paid`, `Cancelled`) |
+| Names and descriptions | bounded `varchar`          | Limits documented in [requirements.md](requirements.md)     |
 
 `AppDbContext` overrides `SaveChanges`/`SaveChangesAsync` to maintain `CreatedAt` and `UpdatedAt` in UTC for
 entities implementing `IAuditableEntity`.
@@ -396,12 +402,12 @@ foreign-key violation. Phase 5 additionally enforces authorization and ownership
 
 ### Delete behaviors
 
-| Relationship              | Behavior   | Reason                                                        |
-| ------------------------- | ---------- | ------------------------------------------------------------- |
-| Customer → ApplicationUser| `RESTRICT` | Deleting a user must not silently remove financial records     |
-| Invoice → ApplicationUser | `RESTRICT` | Same                                                           |
-| Invoice → Customer        | `RESTRICT` | A customer with invoices cannot be deleted                     |
-| InvoiceItem → Invoice     | `CASCADE`  | Items have no meaning without their invoice                    |
+| Relationship               | Behavior   | Reason                                                     |
+| -------------------------- | ---------- | ---------------------------------------------------------- |
+| Customer → ApplicationUser | `RESTRICT` | Deleting a user must not silently remove financial records |
+| Invoice → ApplicationUser  | `RESTRICT` | Same                                                       |
+| Invoice → Customer         | `RESTRICT` | A customer with invoices cannot be deleted                 |
+| InvoiceItem → Invoice      | `CASCADE`  | Items have no meaning without their invoice                |
 
 Cascade from invoice to items is safe because Phase 5 limits hard deletion to Draft invoices. Deleting an
 invoice never deletes its customer. Soft deletion is intentionally not introduced.
@@ -451,8 +457,8 @@ Two anonymous endpoints share one stable JSON contract:
   `200 OK` with `{"status":"Healthy"}` while the process is running, even when PostgreSQL is unavailable.
 - `GET /health` is **readiness**. It runs the registered ASP.NET Core health checks, currently including a
   `DbContext` connectivity check for PostgreSQL:
-  - `200 OK` with `{"status":"Healthy"}` when the database is reachable.
-  - `503 Service Unavailable` with `{"status":"Unhealthy"}` when it is not.
+    - `200 OK` with `{"status":"Healthy"}` when the database is reachable.
+    - `503 Service Unavailable` with `{"status":"Unhealthy"}` when it is not.
 
 Both endpoints are suitable for container probes and never include connection strings or exception
 details. The application starts even when PostgreSQL is unavailable; only readiness fails. Migrations are
@@ -466,16 +472,22 @@ never applied automatically at startup.
 - The runtime image runs as the built-in non-root `app` user (UID 1654) and listens on `8080` through
   `ASPNETCORE_HTTP_PORTS`. It is based on the official multi-architecture images, so `linux/amd64` and
   `linux/arm64` are supported.
-- `docker-compose.yml` defines two long-lived services, `postgres` and `api`, plus an opt-in `migrator`
-  service in the `tools` profile. PostgreSQL uses a named volume and is not published to the host. The API
-  publishes only `127.0.0.1:8080` and reaches the database at `postgres:5432` over the Compose network.
+- `docker-compose.yml` defines two long-lived services, `postgres` and `api`, plus a one-shot `migrator`
+  service. PostgreSQL uses a named volume and is not published to the host. The migrator runs after
+  PostgreSQL is healthy, and the API starts only after migration completes successfully. The API publishes
+  only `127.0.0.1:8080` and reaches the database at `postgres:5432` over the Compose network.
+- The optional `web` profile builds the React application with `VITE_API_BASE_URL=same-origin`, serves it
+  from an unprivileged Nginx container on `127.0.0.1:8081`, and proxies `/api` and `/health` to the private
+  API service. Deep links fall back to `index.html`; hashed assets receive immutable caching while private
+  API responses are not cached. Browser bundles contain no Docker hostnames or runtime secrets.
 - Compose waits for PostgreSQL's `pg_isready` health check before starting the API. The API readiness health
   check issues an HTTP request to `/health` with bash's `/dev/tcp`, so no `curl`/`wget` package is added.
 - Configuration is supplied entirely through environment variables. `ConnectionStrings__DefaultConnection`,
   `Jwt__SigningKey`, and the PostgreSQL credentials are required; `.env` is gitignored and only
   `.env.example` placeholders are committed.
-- Migrations remain explicit. The migrator runs an EF Core migration bundle with `--connection` and exits
-  non-zero on failure. The API never calls `Migrate()` or `EnsureCreated()`.
+- Migrations remain isolated from API startup code. Compose orchestrates the dedicated migrator, which runs
+  an EF Core migration bundle with `--connection` and exits non-zero on failure. The API never calls
+  `Migrate()` or `EnsureCreated()`.
 - Production assumptions: TLS terminates at a trusted reverse proxy or a configured HTTPS listener;
   `ReverseProxy__KnownProxies` must be set for forwarded headers; Swagger/OpenAPI are disabled outside
   Development; HSTS and HTTPS redirection are enabled.
@@ -505,10 +517,12 @@ should use short token lifetimes and accept that role changes take effect at the
 
 ## Testing strategy
 
-| Level       | Tooling                                   | Scope                                                          |
-| ----------- | ----------------------------------------- | -------------------------------------------------------------- |
-| Unit        | xUnit                                     | JWT, validation, financial calculations, concurrency token, EF metadata |
+| Level       | Tooling                                          | Scope                                                                                      |
+| ----------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Unit        | xUnit                                            | JWT, validation, financial calculations, concurrency token, EF metadata                    |
 | Integration | xUnit + Testcontainers + `WebApplicationFactory` | Real PostgreSQL: auth, customer/invoice APIs, concurrency, migrations, constraints, health |
+| Frontend    | Vitest + React Testing Library + jsdom           | Components, routing, auth isolation, API contracts, financial previews                     |
+| End-to-end  | Playwright + Docker Compose                      | Critical desktop/mobile flows against the real API and PostgreSQL                          |
 
 Guidelines:
 
@@ -539,6 +553,11 @@ Guidelines:
   not shared.
 
 ### CI
+
+GitHub Actions separates backend quality, API image, frontend quality, web image, and full-stack E2E jobs.
+Node dependencies are restored from the lockfile with npm caching; the E2E job starts an isolated Compose
+project, waits for health, retains browser artifacts only on failure, and always cleans up. Local success is
+not a substitute for a green remote workflow; tagging is permitted only from the commit that passes CI.
 
 `.github/workflows/ci.yml` runs on pushes and pull requests to `main`, plus `workflow_dispatch`. It installs
 the SDK from `global.json`, restores and builds in Release, verifies Docker, runs the unit and integration
@@ -682,8 +701,7 @@ configured in the workflow.
 - Added a multi-stage `Dockerfile` with `build`, `final`, `migration-build`, and `migrator` stages. The API
   image runs as non-root `app`, exposes `8080`, and contains only published output.
 - Added `docker-compose.yml` with PostgreSQL 17 (named volume, `pg_isready` health check, no published
-  port), the API (localhost-only port, readiness health check, `depends_on` healthy), and an explicit
-  `migrator` service behind the `tools` profile.
+  port), the API (localhost-only port and readiness health check), and a dedicated migration service.
 - Added `.dockerignore`, `.env.example`, and `scripts/migrate.sh`. `.env` remains gitignored.
 - Extended CI with a `docker-build` job that builds the API and migrator images and validates the Compose
   file, without registry credentials or image publishing.

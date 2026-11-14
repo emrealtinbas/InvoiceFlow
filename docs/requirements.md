@@ -284,9 +284,9 @@ Draft ──send──▶ Sent ──pay──▶ Paid
   credentials. No competing configuration keys are introduced.
 - `.env.example` contains placeholders only; `.env` is gitignored. Images must not embed secrets,
   connection strings, or JWT signing keys.
-- Migrations are explicit and are never applied during normal API startup. The Compose migrator service
-  runs an EF Core migration bundle, requires a reachable database, and fails the command on error. It does
-  not reset data and does not require the SDK in the API runtime container.
+- Migrations are isolated from normal API startup code. The Compose migrator service runs an EF Core
+  migration bundle after PostgreSQL becomes healthy; the API starts only after that service succeeds. The
+  migrator fails on errors, does not reset data, and does not require the SDK in the API runtime container.
 - Container health checks use `/health/live` semantics for liveness and `/health` for readiness. They must
   work without `curl` or `wget`, and readiness must fail when PostgreSQL is unavailable.
 - Production Swagger/OpenAPI remain disabled. TLS termination at a trusted reverse proxy and the
@@ -366,8 +366,8 @@ Draft ──send──▶ Sent ──pay──▶ Paid
     exposed on the host loopback interface.
 47. Configuration reuses the existing environment-variable keys; no container-specific configuration keys
     are introduced.
-48. Migrations are applied by an explicit one-off migrator service built from an EF Core migration bundle;
-    the API runtime image does not contain the SDK and never migrates on startup.
+48. Migrations are applied by a one-off Compose migrator service built from an EF Core migration bundle;
+    the API waits for it to succeed, while the API runtime image contains no SDK and never migrates itself.
 49. Container health checks use bash `/dev/tcp` against the existing health endpoints to avoid adding
     `curl` or `wget` to the runtime image.
 50. CI builds the API and migrator images and validates the Compose file without publishing images or

@@ -146,7 +146,7 @@ status is not verified.
       the API (loopback-only `127.0.0.1:8080`, readiness health check, `depends_on` healthy PostgreSQL)
 - [x] Environment-based configuration through existing keys; `.env.example` placeholders and gitignored
       `.env`; no hardcoded credentials or signing keys
-- [x] Explicit migrations through `docker compose run --rm migrator`; no migration on API startup
+- [x] Dedicated Compose migrator that completes successfully before API startup; no migration in API code
 - [x] Container health checks using bash `/dev/tcp` against `/health` and `/health/live`, with no added
       `curl`/`wget` packages
 - [x] `.dockerignore` excluding build output, tests, docs, and local environment files

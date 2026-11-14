@@ -1,0 +1,5 @@
+# Local development only. The committed Compose file keeps CORS disabled by default.
+services:
+  api:
+    environment:
+      Cors__AllowedOrigins__0: http://localhost:5173

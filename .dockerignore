@@ -12,6 +12,7 @@
 **/obj
 **/TestResults
 artifacts
+frontend
 
 # Not needed to build the API image
 docs

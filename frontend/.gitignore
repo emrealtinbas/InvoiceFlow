@@ -1,0 +1,24 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local environment files (the repository-level .gitignore also ignores .env*)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Test and tooling output
+test-results/
+playwright-report/
+blob-report/
+*.log
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

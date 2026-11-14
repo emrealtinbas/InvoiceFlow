@@ -61,9 +61,8 @@ health_status="$(
 
 if [[ "$health_status" != "200" ]]; then
     echo "InvoiceFlow is not ready at $API_URL (HTTP $health_status)." >&2
-    echo "Start Compose and apply migrations before running this demo:" >&2
+    echo "Start the complete Compose application before running this demo:" >&2
     echo "  docker compose up -d --build" >&2
-    echo "  docker compose run --rm migrator" >&2
     exit 1
 fi
 

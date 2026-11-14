@@ -1,13 +1,23 @@
-# InvoiceFlow API
+# InvoiceFlow
 
 [![CI](https://github.com/emrealtinbas/InvoiceFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/emrealtinbas/InvoiceFlow/actions/workflows/ci.yml)
 
-**Production-oriented invoice management REST API built with ASP.NET Core and PostgreSQL.**
+**Production-oriented invoice management portfolio application built with ASP.NET Core, React, and PostgreSQL.**
 
 InvoiceFlow is a portfolio project that demonstrates how a small-business invoicing backend can be built
 with explicit business rules, secure data ownership, exact financial arithmetic, real-database integration
 tests, and a reproducible container workflow. It is an independent sample application—not a payment
 processor, accounting product, or client system—and contains no real customer data.
+
+A production-style React frontend lives in [`frontend/`](frontend/README.md). It delivers authentication,
+customer and invoice workflows, guarded lifecycle actions, bounded dashboard analytics, accessibility
+hardening, a same-origin Nginx container, and Playwright E2E infrastructure.
+
+> **Release status:** Phase 10 local verification is complete — backend and frontend suites, image
+> builds, full Compose startup, Nginx behavior, restart persistence, six Playwright scenarios, and the
+> authenticated Phase 8 browser checks all pass in this environment. The release stays **blocked** until a
+> candidate commit is authorized and the same commit passes remote GitHub Actions. See the
+> [release-readiness matrix](docs/release-readiness.md).
 
 ## What this project demonstrates
 
@@ -21,23 +31,25 @@ processor, accounting product, or client system—and contains no real customer 
 - Correlation IDs, structured request logging, explicit CORS, and fixed-window rate limiting
 - Liveness and PostgreSQL-backed readiness checks
 - Explicit EF Core migrations and a separate migration-bundle container
-- Non-root multi-stage Docker image and Docker Compose environment
-- 284 tests, including PostgreSQL 17 integration tests through Testcontainers
-- GitHub Actions for Release builds, tests, Docker builds, and Compose validation
+- Non-root multi-stage API and web images with an optional full-stack Compose profile
+- A 284-test backend suite, including PostgreSQL 17 integration tests through Testcontainers
+- GitHub Actions for backend/frontend quality, Docker builds, Compose validation, and full-stack E2E
+- React 19 + TypeScript frontend with 216 unit/component tests and six Playwright E2E scenarios
 
 ## Technology stack
 
-| Area | Technology |
-| --- | --- |
-| Runtime | .NET 10, ASP.NET Core controller-based Web API |
-| Language | C# with nullable reference types and warnings as errors |
-| Persistence | PostgreSQL 17, EF Core 10, Npgsql, explicit migrations |
-| Identity | ASP.NET Core Identity with `Guid` users and roles |
-| Authentication | HS256 JWT bearer tokens |
-| API documentation | OpenAPI and Swagger UI in Development |
-| Testing | xUnit, `WebApplicationFactory`, Testcontainers |
-| Operations | Structured logging, correlation IDs, rate limiting, health checks |
-| Delivery | Docker, Docker Compose, GitHub Actions |
+| Area              | Technology                                                                  |
+| ----------------- | --------------------------------------------------------------------------- |
+| Runtime           | .NET 10, ASP.NET Core controller-based Web API                              |
+| Language          | C# with nullable reference types and warnings as errors                     |
+| Persistence       | PostgreSQL 17, EF Core 10, Npgsql, explicit migrations                      |
+| Identity          | ASP.NET Core Identity with `Guid` users and roles                           |
+| Authentication    | HS256 JWT bearer tokens                                                     |
+| API documentation | OpenAPI and Swagger UI in Development                                       |
+| Testing           | xUnit, `WebApplicationFactory`, Testcontainers                              |
+| Operations        | Structured logging, correlation IDs, rate limiting, health checks           |
+| Delivery          | Docker, Docker Compose, GitHub Actions                                      |
+| Frontend          | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Vitest |
 
 ## Architecture
 
@@ -46,10 +58,10 @@ controllers enforce authorization and business workflows, EF Core manages transa
 and PostgreSQL provides relational integrity, exact numeric storage, sequencing, and row versions.
 
 ```mermaid
-flowchart TB
-    Client[HTTP clients<br/>curl / Swagger / applications]
-    Compose[Docker Compose]
-    Tests[xUnit integration tests<br/>Testcontainers]
+flowchart LR
+    Browser[Browser]
+    Nginx[Nginx web container<br/>SPA + same-origin proxy]
+    Client[API clients<br/>curl / Swagger]
 
     subgraph API[ASP.NET Core API]
         Middleware[HTTP pipeline<br/>correlation ID · logging · errors<br/>CORS · rate limiting]
@@ -67,13 +79,11 @@ flowchart TB
 
     DB[(PostgreSQL 17)]
 
+    Browser --> Nginx
+    Nginx --> Middleware
     Client --> Middleware
     Client --> Health
     EF --> DB
-    Compose -. runs .-> API
-    Compose -. runs .-> DB
-    Tests -. starts isolated .-> DB
-    Tests --> API
 ```
 
 There are no microservices, message brokers, caches, or background workers. See
@@ -88,16 +98,35 @@ Prerequisites: Docker with Compose v2, `curl`, and `jq` for the demo.
 cp .env.example .env
 # Replace POSTGRES_PASSWORD and Jwt__SigningKey in .env with local values.
 
-docker compose build
-docker compose up -d
-docker compose run --rm migrator
+docker compose up -d --build --wait
 
 curl http://localhost:8080/health/live
 curl http://localhost:8080/health
 ```
 
-Compose exposes only the API at `127.0.0.1:8080`; PostgreSQL remains on the private network. Migrations are
-never applied automatically. Existing data is retained in the `invoiceflow_postgres-data` named volume.
+Compose starts the services in dependency order:
+
+1. `postgres` starts and becomes healthy.
+2. `migrator` applies the committed EF Core migrations and exits successfully.
+3. `api` starts only after migration succeeds.
+
+Docker Desktop shows all three under the `invoiceflow` Compose application. The `migrator` container being
+`Exited (0)` is expected; it is a successful one-off task, not a long-running service. Compose exposes only
+the API at `127.0.0.1:8080`; PostgreSQL remains on the private network. The API never applies migrations
+itself. Existing data is retained in the `invoiceflow_postgres-data` named volume.
+
+Start the complete browser stack with the optional web profile:
+
+```bash
+docker compose --profile web up -d --build --wait
+curl http://localhost:8081/health
+open http://localhost:8081
+```
+
+The browser connects only to Nginx at `127.0.0.1:8081`. Nginx serves immutable hashed assets, applies SPA
+fallback and security headers, and proxies `/api/*` and `/health*` over the private Compose network to the
+API. No `api` or `postgres` service name is embedded in JavaScript. Set `WEB_PORT` to change the host port.
+The profile is opt-in, so the established API-only `docker compose up` workflow remains unchanged.
 
 Run the complete, repeatable demo without deleting or resetting data:
 
@@ -134,14 +163,74 @@ dotnet run --project src/InvoiceFlow.Api
 
 Development resources use the launch profile:
 
-| Resource | URL |
-| --- | --- |
-| Swagger UI | `http://localhost:5188/swagger` |
+| Resource         | URL                                     |
+| ---------------- | --------------------------------------- |
+| Swagger UI       | `http://localhost:5188/swagger`         |
 | OpenAPI document | `http://localhost:5188/openapi/v1.json` |
-| Liveness | `http://localhost:5188/health/live` |
-| Readiness | `http://localhost:5188/health` |
+| Liveness         | `http://localhost:5188/health/live`     |
+| Readiness        | `http://localhost:5188/health`          |
 
 Swagger and OpenAPI are disabled outside Development.
+
+## Web frontend
+
+The React + TypeScript application provides the complete sample UI through Phase 10: memory-only JWT
+sessions, customer CRUD, invoice editing and lifecycle, honest dashboard analytics, accessibility hardening,
+and container/E2E delivery infrastructure.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+The dev server runs at `http://localhost:5173` and expects the API at `http://localhost:8080` by default.
+Because the API allows no cross-origin requests by default, set
+`Cors__AllowedOrigins__0=http://localhost:5173` for the API process or a local Compose override. See the
+[frontend README](frontend/README.md) for prerequisites, scripts, and troubleshooting.
+
+Frontend documentation:
+
+- [Frontend README](frontend/README.md)
+- [API contract](frontend/docs/api-contract.md)
+- [Frontend development plan](frontend/docs/development-plan.md)
+
+### Browser E2E tests
+
+With the full-stack profile healthy:
+
+```bash
+LOGIN_PERMIT_LIMIT=100 REGISTER_PERMIT_LIMIT=100 \
+  docker compose --profile web up -d --build --wait
+cd frontend
+npm ci
+npm run test:e2e:install
+E2E_BASE_URL=http://127.0.0.1:8081 npm run test:e2e
+```
+
+The suite creates seven accounts, so the command uses explicit test-only rate-limit overrides. Normal Compose
+startup retains the production-style defaults of 10 logins and 5 registrations per minute.
+
+The six Playwright scenarios use unique disposable accounts and cover authentication/session persistence,
+ownership isolation, customer CRUD, invoice financial parity and concurrency, lifecycle terminal states,
+dashboard data, Draft deletion, and mobile navigation. Local runs leave terminal invoices and their accounts
+because the API intentionally has no account cleanup endpoint. CI uses an isolated Compose project and
+removes only its own containers and volume afterward.
+
+## Screenshots
+
+Captured from the verified local full-stack Compose profile at `http://127.0.0.1:8081` with the synthetic
+`demo@invoiceflow.example` account and `.example` customer addresses. No real personal data, credentials,
+tokens, or environment values appear in these images.
+
+| Dashboard                                             | Invoices                                           |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| ![Dashboard](docs/screenshots/dashboard.png)          | ![Invoice list](docs/screenshots/invoices.png)      |
+| **Invoice detail**                                    | **Draft invoice editor**                           |
+| ![Invoice detail](docs/screenshots/invoice-detail.png) | ![Draft editor](docs/screenshots/invoice-editor.png) |
+| **Customers**                                         | **Mobile invoice list**                            |
+| ![Customers](docs/screenshots/customers.png)          | ![Mobile invoices](docs/screenshots/invoices-mobile.png) |
 
 ## API workflow
 
@@ -160,8 +249,18 @@ Invoice totals are server-controlled. For example, these lines:
 
 ```json
 [
-  { "description": "API implementation", "quantity": 2.5, "unitPrice": 1200.00, "taxRate": 20.00 },
-  { "description": "Integration testing", "quantity": 3, "unitPrice": 450.00, "taxRate": 10.00 }
+    {
+        "description": "API implementation",
+        "quantity": 2.5,
+        "unitPrice": 1200.0,
+        "taxRate": 20.0
+    },
+    {
+        "description": "Integration testing",
+        "quantity": 3,
+        "unitPrice": 450.0,
+        "taxRate": 10.0
+    }
 ]
 ```
 
@@ -185,9 +284,13 @@ dotnet test InvoiceFlow.slnx --configuration Release --no-build
   committed migrations. They cover authentication, authorization, CRUD, financial persistence, lifecycle,
   concurrency, database constraints, ProblemDetails, CORS, rate limits, and health checks.
 
-Docker must be running for integration tests. The last local Phase 10 verification passed all **284 tests**
-with zero build warnings and errors. The GitHub Actions workflow independently repeats the Release build,
-unit and PostgreSQL integration tests, Docker image builds, and Compose validation.
+Docker must be running for integration tests. In the current Phase 10 environment, the complete Release
+solution builds with zero warnings/errors, all **75 unit tests** and all **209 PostgreSQL integration tests**
+pass, and so do the frontend suite, image builds, Compose startup, and the six Playwright scenarios. The
+[release-readiness matrix](docs/release-readiness.md) records the executed evidence and the checks that
+remain external. GitHub Actions independently repeats the Release build, unit and integration tests,
+frontend quality, image builds, Compose validation, and full-stack Chromium E2E. Browser artifacts are
+uploaded only on failure.
 
 ## Security considerations
 
@@ -207,8 +310,10 @@ an independent security audit.
 ## Scope
 
 InvoiceFlow intentionally excludes real payment processing, refunds, PDF generation, e-mail delivery,
-webhooks, audit-history tables, multi-currency conversion, cloud infrastructure, and a frontend. Marking an
-invoice Paid records only a business status transition.
+webhooks, audit-history tables, multi-currency conversion, cloud infrastructure, and managed production
+hosting. The frontend container is production-style, but TLS, secret management, backups, observability, and
+deployment remain operator responsibilities. Marking an invoice Paid records only a business status
+transition.
 
 ## Documentation
 
@@ -218,6 +323,9 @@ invoice Paid records only a business status transition.
 - [Requirements](docs/requirements.md)
 - [Development plan](docs/development-plan.md)
 - [Release readiness](docs/release-readiness.md)
+- [Frontend README](frontend/README.md)
+- [Frontend API contract](frontend/docs/api-contract.md)
+- [Frontend development plan](frontend/docs/development-plan.md)
 - [Contributing](CONTRIBUTING.md)
 - [CI workflow](.github/workflows/ci.yml)
 

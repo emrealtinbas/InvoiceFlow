@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="InvoiceFlow">
+  <rect width="32" height="32" rx="8" fill="#3355d1" />
+  <path
+    d="M10 8.5h9.2L23 12.3v11.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 9 23.5v-13A2 2 0 0 1 11 8.5Z"
+    fill="#ffffff"
+    opacity=".95"
+  />
+  <path d="M19 9v4h4" fill="none" stroke="#3355d1" stroke-width="1.6" stroke-linejoin="round" />
+  <path
+    d="M12.5 17h6M12.5 20h4"
+    fill="none"
+    stroke="#3355d1"
+    stroke-width="1.6"
+    stroke-linecap="round"
+  />
+</svg>
