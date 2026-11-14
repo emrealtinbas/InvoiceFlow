@@ -110,7 +110,9 @@ test('invoice financial parity, stale update recovery, lifecycle, and dashboard'
 
   await page.getByLabel('Description').first().fill('Changed after concurrent update');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText(/modified|concurrency|changed after you opened/i)).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: /concurrency|changed after you opened/i }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Reload latest invoice' }).click();
   await page.getByRole('button', { name: 'Discard and reload' }).click();
   const restoredDescriptions = page.getByLabel('Description');
