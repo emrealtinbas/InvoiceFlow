@@ -16,18 +16,18 @@ application, not a half-integrated feature.
 
 **Status legend:** Complete · Verification pending · Planned
 
-| #   | Phase                         | Status               |
-| --- | ----------------------------- | -------------------- |
-| 1   | Foundation & API Contract     | **Complete**         |
-| 2   | Authentication & App Shell    | **Complete**         |
-| 3   | Customer Management           | **Complete**         |
-| 4   | Invoice Management            | **Complete**         |
-| 5   | Invoice Editor & Calculations | **Complete**         |
-| 6   | Invoice Lifecycle             | **Complete**         |
-| 7   | Dashboard & Analytics         | **Complete**         |
-| 8   | UX, Accessibility & Security  | **Complete**         |
-| 9   | Integration Tests & Docker    | **Complete**         |
-| 10  | Portfolio Release             | **Complete**         |
+| #   | Phase                         | Status       |
+| --- | ----------------------------- | ------------ |
+| 1   | Foundation & API Contract     | **Complete** |
+| 2   | Authentication & App Shell    | **Complete** |
+| 3   | Customer Management           | **Complete** |
+| 4   | Invoice Management            | **Complete** |
+| 5   | Invoice Editor & Calculations | **Complete** |
+| 6   | Invoice Lifecycle             | **Complete** |
+| 7   | Dashboard & Analytics         | **Complete** |
+| 8   | UX, Accessibility & Security  | **Complete** |
+| 9   | Integration Tests & Docker    | **Complete** |
+| 10  | Portfolio Release             | **Complete** |
 
 ---
 
