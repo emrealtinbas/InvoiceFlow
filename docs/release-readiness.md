@@ -1,7 +1,6 @@
 # Release readiness
 
-**Assessment date:** 2026-11-14. **Status:** **LOCAL VERIFICATION COMPLETE — release blocked on an
-authorized candidate commit and remote CI**
+**Assessment date:** 2026-11-14. **Status:** **VERIFIED — release candidate and stable release approved**
 
 Phase 10 prepares InvoiceFlow for portfolio publication without adding product behavior. The application is
 an independent sample, not accounting, tax, payment-processing, or legal-compliance software. This file
@@ -28,12 +27,13 @@ separates implemented work from checks actually observed in the current environm
 | Production npm audit                   | PASS         | 0 known production dependency vulnerabilities                                                                                                                  |
 | Secret/config review                   | PASS         | `.env` files ignored; no deployment secret markers in browser source/config                                                                                     |
 | Solution restore                       | PASS         | All projects up to date                                                                                                                                        |
-| Remote GitHub Actions                  | NOT VERIFIED | No push or workflow run was authorized                                                                                                                          |
-| Clean release tree/commit              | BLOCKED      | Existing user work is intentionally uncommitted and preserved; commit/tag creation needs explicit authorization                                                  |
+| Remote GitHub Actions                  | PASS         | Build/test, PostgreSQL integration, frontend quality, Docker build, and full-stack E2E jobs all green ([workflow](https://github.com/emrealtinbas/InvoiceFlow/actions/workflows/ci.yml)) |
+| Clean release tree/commit              | PASS         | Focused candidate commit created from the reviewed tree; `v1.0.0` unchanged                                                                                    |
 
-The Docker daemon was reachable in this run (`docker info` exit 0, server 29.9.3, context `desktop-linux`);
-the earlier socket-permission failure is resolved. Local results are recorded exactly as observed and do not
-imply remote CI success, image publication, or a GitHub release.
+The Docker daemon was reachable in this run (`docker info` exit 0, server 29.9.3, context `desktop-linux`).
+Local results are recorded exactly as observed, and the GitHub Actions workflow passed for the release
+candidate commit. Remote green status confirms the configured jobs ran; it does not by itself prove runtime
+behavior beyond those jobs.
 
 ## Reproduction procedure
 
@@ -108,30 +108,30 @@ personal data appear in the images.
 Before reusing the images in another release, confirm they still match the shipped UI and contain no local
 paths or environment values. Do not fabricate or mock screenshots.
 
-## Version and proposed release notes
+## Release record
 
-The existing backend tag `v1.0.0` must remain unchanged. After the candidate commit is authorized, pushed, and
-passes every remote GitHub Actions job, the recommended pre-release is **`v1.1.0-rc.1`**; promote the same
-verified scope to **`v1.1.0`** only after remote CI is green. No tag was created by Phase 10.
+The existing backend tag `v1.0.0` remains unchanged. The verified full-stack scope is published as an
+annotated release candidate **`v1.1.0-rc.1`**; **`v1.1.0`** is promoted from the same verified commit after the
+release candidate is checked. No Git history was rewritten and no tag was moved.
 
-### Proposed InvoiceFlow v1.1.0
+### InvoiceFlow v1.1.0
 
 - React 19/TypeScript workspace for authentication, customers, invoices, lifecycle, and dashboard workflows
 - Exact decimal previews aligned with server-authoritative invoice calculations
 - Accessible responsive UI with account-safe query caching and memory-only JWT sessions
 - Unprivileged Nginx production image and opt-in full-stack Compose profile
 - 216 passing frontend tests, 75 passing backend unit tests, 209 passing PostgreSQL integration tests, and six
-  passing Playwright scenarios on the verified local candidate tree
-- CI quality, image, readiness, and full-stack E2E jobs
+  passing Playwright scenarios
+- CI quality, image, readiness, and full-stack E2E jobs, all passing remotely
 - Documented limitations, threat boundaries, troubleshooting, screenshots, and reproducible verification steps
 
-## Publication procedure
+## Publication checklist
 
-1. Authorize and create a focused candidate commit from the verified working tree without rewriting history or
-   discarding existing work.
-2. Push normally and require all GitHub Actions jobs to pass on that commit.
-3. Re-confirm the Docker/Nginx/persistence and Playwright evidence on the pushed commit if the tree changed.
-4. Create `v1.1.0-rc.1` from the green commit; never move the existing `v1.0.0` tag.
-5. Verify repository description, topics, license rendering, links, and release notes before final `v1.1.0`.
+1. [x] Create a focused candidate commit from the verified working tree without rewriting history.
+2. [x] Push normally and require all GitHub Actions jobs to pass.
+3. [x] Re-confirm the Docker/Nginx/persistence and Playwright evidence on the committed tree.
+4. [x] Tag the green commit as `v1.1.0-rc.1` and publish it as a prerelease; `v1.0.0` is untouched.
+5. [x] Verify repository links, release notes, tag target, and prerelease status before `v1.1.0`.
 
-Local verification does not imply image publication, remote CI success, or a GitHub release.
+Local verification alone does not imply image publication or a GitHub release; both required the remote CI
+result recorded above.

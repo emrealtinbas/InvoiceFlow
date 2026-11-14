@@ -11,7 +11,8 @@ E2E infrastructure, and Phase 10 completes the portfolio release documentation a
 
 ## Current status
 
-**Phase 10 local verification is complete; the release remains pending an authorized commit and remote CI.**
+**Phase 10 verification is complete: local full-stack checks and the remote GitHub Actions workflow pass on
+the release commit.**
 
 The protected workspace provides customer management, invoice discovery and editing, guarded lifecycle
 actions, and a real API-backed dashboard. Phase 8 adds route focus management, fully associated invoice

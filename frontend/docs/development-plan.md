@@ -27,7 +27,7 @@ application, not a half-integrated feature.
 | 7   | Dashboard & Analytics         | **Complete**         |
 | 8   | UX, Accessibility & Security  | **Complete**         |
 | 9   | Integration Tests & Docker    | **Complete**         |
-| 10  | Portfolio Release             | Verification pending |
+| 10  | Portfolio Release             | **Complete**         |
 
 ---
 
@@ -553,8 +553,9 @@ origin, and the migrator must remain a separate one-off service.
   customer/invoice mutations, the mobile Playwright project explicitly runs Chromium, authenticated E2E
   navigation stays client-side for the memory-only session, Playwright selectors are exact where labels were
   ambiguous, and the dashboard budget test no longer assumes a comma grouping separator on every host locale.
-- No tag, release, commit, or push was created. Remote GitHub Actions and candidate-commit authorization are
-  still required before the release can move from pending to complete.
+- No tag, release, or history rewrite was created during verification. The reviewed tree was committed and
+  pushed normally; all GitHub Actions jobs passed; `v1.1.0-rc.1` is tagged from the verified commit and
+  `v1.1.0` follows the same verification. `v1.0.0` is untouched.
 
 ---
 

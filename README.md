@@ -13,11 +13,10 @@ A production-style React frontend lives in [`frontend/`](frontend/README.md). It
 customer and invoice workflows, guarded lifecycle actions, bounded dashboard analytics, accessibility
 hardening, a same-origin Nginx container, and Playwright E2E infrastructure.
 
-> **Release status:** Phase 10 local verification is complete — backend and frontend suites, image
-> builds, full Compose startup, Nginx behavior, restart persistence, six Playwright scenarios, and the
-> authenticated Phase 8 browser checks all pass in this environment. The release stays **blocked** until a
-> candidate commit is authorized and the same commit passes remote GitHub Actions. See the
-> [release-readiness matrix](docs/release-readiness.md).
+> **Release status:** Full-stack verification is complete: the backend and frontend suites, image builds,
+> full Compose startup, Nginx behavior, restart persistence, six Playwright scenarios, the authenticated
+> Phase 8 browser checks, and the GitHub Actions CI workflow all pass on the release commit. See the
+> [release-readiness matrix](docs/release-readiness.md) for evidence and known limitations.
 
 ## What this project demonstrates
 
